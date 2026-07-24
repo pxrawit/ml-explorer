@@ -51,7 +51,8 @@ def load_data():
     ]
     for path in paths:
         if os.path.exists(path):
-            return pd.read_csv(path)
+            df = pd.read_csv(path)
+            return df
     # ถ้าไม่เจอจริงๆ ให้ใช้ sklearn
     from sklearn.datasets import fetch_california_housing
     data = fetch_california_housing(as_frame=True)
@@ -59,6 +60,7 @@ def load_data():
 
 try:
     df = load_data()
+    st.success(f"✅ โหลดข้อมูลสำเร็จ: {len(df):,} แถว")
 except Exception as e:
     st.error(f"❌ โหลดข้อมูลไม่สำเร็จ: {e}")
     st.stop()
@@ -66,8 +68,11 @@ except Exception as e:
 # ========== แสดงข้อมูล ==========
 with st.expander("📊 ดูข้อมูลตัวอย่าง", expanded=False):
     st.dataframe(df.head(10))
-    st.write(f"**จำนวนข้อมูล:** {len(df)} แถว")
+    st.write(f"**จำนวนข้อมูล:** {len(df):,} แถว")
     st.write(f"**จำนวน Features:** {len(df.columns) - 1}")
+    
+    st.markdown("### 📈 สถิติสรุป")
+    st.dataframe(df.describe())
 
 # ========== แยก Features/Target ==========
 X = df.drop(columns=['median_house_value'])
@@ -111,7 +116,8 @@ def train_knn(k, weights, metric, X_train, y_train):
     model.fit(X_train, y_train)
     return model
 
-model = train_knn(k_value, weights, metric, X_train_scaled, y_train)
+with st.spinner("กำลังเทรนโมเดล..."):
+    model = train_knn(k_value, weights, metric, X_train_scaled, y_train)
 
 # ========== ประเมินโมเดล ==========
 y_pred = model.predict(X_test_scaled)
@@ -123,12 +129,12 @@ r2 = r2_score(y_test, y_pred)
 # ========== แสดงผล Metrics ==========
 st.markdown("### 📈 ผลลัพธ์การเทรนโมเดล")
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("R² Score", f"{r2:.4f}")
-col2.metric("RMSE", f"${rmse:,.0f}")
-col3.metric("MAE", f"${mae:,.0f}")
-col4.metric("MSE", f"{mse:,.0f}")
+col1.metric("R² Score", f"{r2:.4f}", help="ยิ่งใกล้ 1 ยิ่งดี")
+col2.metric("RMSE", f"${rmse:,.0f}", help="Root Mean Squared Error")
+col3.metric("MAE", f"${mae:,.0f}", help="Mean Absolute Error")
+col4.metric("MSE", f"{mse:,.0f}", help="Mean Squared Error")
 
-st.info(f"💡 **K={k_value}** | **weights={weights}** | **metric={metric}** | **Train: {len(X_train)} samples** | **Test: {len(X_test)} samples**")
+st.info(f"💡 **K={k_value}** | **weights={weights}** | **metric={metric}** | **Train: {len(X_train):,} samples** | **Test: {len(X_test):,} samples**")
 
 # ========== Visualization: Predicted vs Actual ==========
 st.markdown("### 🔍 Predicted vs Actual Values")
@@ -299,7 +305,6 @@ st.plotly_chart(fig_map, use_container_width=True)
 
 # ========== Feature Distribution ==========
 st.markdown("### 📊 การกระจายตัวของ Features ที่คุณกรอก")
-fig_dist = make_subplots = None
 
 col_a, col_b = st.columns(2)
 with col_a:
