@@ -4,13 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
-from sklearn.tree import DecisionTreeRegressor, plot_tree
+from sklearn.tree import DecisionTreeClassifier, plot_tree
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, auc
 import os
 
-st.set_page_config(page_title="Decision Tree - California Housing", page_icon="🌳", layout="wide")
+st.set_page_config(page_title="Decision Tree - Heart Disease", page_icon="🌳", layout="wide")
 
 # ========== Custom CSS ==========
 st.markdown("""
@@ -28,73 +28,75 @@ st.markdown("""
         font-weight: bold;
         margin: 10px 0;
     }
-    .step-box {
-        background: rgba(86, 171, 47, 0.1);
-        padding: 15px;
-        border-radius: 10px;
-        margin: 10px 0;
-        border-left: 3px solid #56ab2f;
+    .risk-high {
+        background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%);
+        color: white;
+    }
+    .risk-low {
+        background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+        color: white;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("# 🌳 Decision Tree - California Housing Price Prediction")
-st.markdown("### ทำนายราคาบ้านด้วยต้นไม้ตัดสินใจ - แบ่งข้อมูลด้วยกฎ if-else")
-
-# ========== ทฤษฎี ==========
-with st.expander("📚 ทฤษฎี Decision Tree Regression", expanded=False):
-    st.markdown("""
-    **Decision Tree Regression** แบ่งข้อมูลออกเป็นกิ่งๆ ด้วยคำถาม "ใช่/ไม่ใช่" 
-    จนกว่าจะได้กลุ่มที่มีค่า target คล้ายกัน
-    
-    ### 🧮 หลักการทำงาน
-    1. หา feature และ threshold ที่ดีที่สุดในการแบ่งข้อมูล
-    2. แบ่งข้อมูลเป็น 2 กิ่ง (ซ้าย/ขวา)
-    3. ทำซ้ำแบบ recursive จนกว่าจะถึงเงื่อนไขหยุด
-    4. ทำนาย = ค่าเฉลี่ยของ leaf node
-    
-    ### 📏 Criterion สำหรับ Regression
-    - **MSE (Mean Squared Error)**: ลดผลรวมของกำลังสองของ error
-    - **MAE (Mean Absolute Error)**: ลดผลรวมของค่าสัมบูรณ์ของ error  
-    - **Friedman MSE**: ปรับปรุงจาก MSE โดย Friedman
-    - **Poisson**: สำหรับข้อมูล count
-    
-    ### ✂️ การป้องกัน Overfitting
-    - `max_depth`: จำกัดความลึกของต้นไม้
-    - `min_samples_split`: จำนวนตัวอย่างขั้นต่ำที่ต้องมีเพื่อแบ่ง node
-    - `min_samples_leaf`: จำนวนตัวอย่างขั้นต่ำใน leaf
-    - `max_features`: จำนวน feature ที่พิจารณาในแต่ละ split
-    """)
+st.markdown("# 🌳 Decision Tree - Heart Disease Prediction")
+st.markdown("### ทำนายความเสี่ยงโรคหัวใจด้วยต้นไม้ตัดสินใจ")
 
 # ========== โหลดข้อมูล ==========
 @st.cache_data
 def load_data():
     paths = [
-        "california_housing_test.csv",
-        "data/california_housing_test.csv",
-        "../california_housing_test.csv"
+        "heart_disease_patient_eda_2000_records2.xlsx",
+        "data/heart_disease_patient_eda_2000_records2.xlsx",
+        "../heart_disease_patient_eda_2000_records2.xlsx"
     ]
     for path in paths:
         if os.path.exists(path):
-            return pd.read_csv(path)
-    from sklearn.datasets import fetch_california_housing
-    data = fetch_california_housing(as_frame=True)
-    return data.frame.reset_index(drop=True)
+            return pd.read_excel(path)
+    st.error("❌ ไม่พบไฟล์ heart_disease_patient_eda_2000_records2.xlsx")
+    return None
 
-try:
-    df = load_data()
-except Exception as e:
-    st.error(f"❌ โหลดข้อมูลไม่สำเร็จ: {e}")
+df = load_data()
+if df is None:
     st.stop()
 
-# ========== แยก Features/Target ==========
-X = df.drop(columns=['median_house_value'])
-y = df['median_house_value']
-feature_names = X.columns.tolist()
+# ========== แสดงข้อมูล ==========
+with st.expander("📊 ดูข้อมูลตัวอย่าง", expanded=False):
+    st.dataframe(df.head(10))
+    st.write(f"**จำนวนข้อมูล:** {len(df):,} records")
+    st.write(f"**จำนวน Features:** {len(df.columns) - 1}")
+    
+    st.markdown("### 📈 สถิติสรุป")
+    st.dataframe(df.describe())
 
-# Train/Test Split
+# ========== Preprocessing ==========
+# เลือก features ที่สำคัญ
+numeric_features = ['age', 'bmi', 'systolic_bp', 'diastolic_bp', 
+                    'cholesterol_mg_dl', 'fasting_blood_sugar', 
+                    'max_heart_rate', 'risk_score']
+
+categorical_features = ['sex', 'smoking_status', 'exercise_level', 
+                        'diabetes', 'family_history', 'chest_pain_type', 
+                        'ecg_result']
+
+# Encode categorical features
+label_encoders = {}
+df_encoded = df.copy()
+
+for col in categorical_features:
+    if col in df.columns:
+        le = LabelEncoder()
+        df_encoded[col] = le.fit_transform(df[col].astype(str))
+        label_encoders[col] = le
+
+# เลือก features สำหรับ model
+feature_cols = numeric_features + [col for col in categorical_features if col in df.columns]
+X = df_encoded[feature_cols]
+y = df_encoded['heart_disease']
+
+# ========== Train/Test Split ==========
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+    X, y, test_size=0.2, random_state=42, stratify=y
 )
 
 # ========== Sidebar: ปรับพารามิเตอร์ ==========
@@ -126,14 +128,14 @@ min_samples_leaf = st.sidebar.slider(
 
 criterion = st.sidebar.selectbox(
     "Criterion (เกณฑ์การแบ่ง)",
-    ["squared_error", "absolute_error", "friedman_mse", "poisson"],
+    ["gini", "entropy", "log_loss"],
     help="ฟังก์ชันที่ใช้วัด quality ของ split"
 )
 
 # ========== เทรนโมเดล ==========
 @st.cache_resource
 def train_tree(max_depth, min_samples_split, min_samples_leaf, criterion, X_train, y_train):
-    model = DecisionTreeRegressor(
+    model = DecisionTreeClassifier(
         max_depth=max_depth,
         min_samples_split=min_samples_split,
         min_samples_leaf=min_samples_leaf,
@@ -143,25 +145,83 @@ def train_tree(max_depth, min_samples_split, min_samples_leaf, criterion, X_trai
     model.fit(X_train, y_train)
     return model
 
-with st.spinner("กำลังเทรน Decision Tree..."):
-    model = train_tree(max_depth, min_samples_split, min_samples_leaf, criterion, X_train, y_train)
+model = train_tree(max_depth, min_samples_split, min_samples_leaf, criterion, X_train, y_train)
 
 # ========== ประเมินโมเดล ==========
 y_pred = model.predict(X_test)
-mse = mean_squared_error(y_test, y_pred)
-rmse = np.sqrt(mse)
-mae = mean_absolute_error(y_test, y_pred)
-r2 = r2_score(y_test, y_pred)
+y_pred_proba = model.predict_proba(X_test)[:, 1]
+
+accuracy = accuracy_score(y_test, y_pred)
 
 # ========== แสดงผล Metrics ==========
 st.markdown("### 📈 ผลลัพธ์การเทรนโมเดล")
-col1, col2, col3, col4 = st.columns(4)
-col1.metric("R² Score", f"{r2:.4f}", help="ยิ่งใกล้ 1 ยิ่งดี")
-col2.metric("RMSE", f"${rmse:,.0f}", help="Root Mean Squared Error")
-col3.metric("MAE", f"${mae:,.0f}", help="Mean Absolute Error")
-col4.metric("MSE", f"{mse:,.0f}", help="Mean Squared Error")
 
-st.info(f"💡 **max_depth={max_depth}** | **min_samples_split={min_samples_split}** | **min_samples_leaf={min_samples_leaf}** | **criterion={criterion}**")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Accuracy", f"{accuracy:.4f}")
+col2.metric("Train Samples", f"{len(X_train):,}")
+col3.metric("Test Samples", f"{len(X_test):,}")
+col4.metric("Features", len(feature_cols))
+
+st.info(f"💡 **max_depth={max_depth}** | **criterion={criterion}** | **min_samples_split={min_samples_split}**")
+
+# ========== Confusion Matrix ==========
+st.markdown("### 🔢 Confusion Matrix")
+
+cm = confusion_matrix(y_test, y_pred)
+fig_cm, ax_cm = plt.subplots(figsize=(8, 6))
+im = ax_cm.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
+ax_cm.set_title('Confusion Matrix', fontsize=14, fontweight='bold')
+ax_cm.set_xlabel('Predicted', fontsize=12)
+ax_cm.set_ylabel('Actual', fontsize=12)
+
+# Add text annotations
+thresh = cm.max() / 2.
+for i in range(cm.shape[0]):
+    for j in range(cm.shape[1]):
+        ax_cm.text(j, i, format(cm[i, j], 'd'),
+                   ha="center", va="center",
+                   color="white" if cm[i, j] > thresh else "black",
+                   fontsize=16, fontweight='bold')
+
+ax_cm.set_xticks([0, 1])
+ax_cm.set_yticks([0, 1])
+ax_cm.set_xticklabels(['No Disease (0)', 'Disease (1)'])
+ax_cm.set_yticklabels(['No Disease (0)', 'Disease (1)'])
+fig_cm.tight_layout()
+st.pyplot(fig_cm)
+
+# ========== Classification Report ==========
+st.markdown("### 📋 Classification Report")
+report = classification_report(y_test, y_pred, output_dict=True)
+report_df = pd.DataFrame(report).transpose()
+st.dataframe(report_df)
+
+# ========== ROC Curve ==========
+st.markdown("### 📉 ROC Curve")
+
+fpr, tpr, thresholds = roc_curve(y_test, y_pred_proba)
+roc_auc = auc(fpr, tpr)
+
+fig_roc = go.Figure()
+fig_roc.add_trace(go.Scatter(
+    x=fpr, y=tpr,
+    mode='lines',
+    name=f'ROC Curve (AUC = {roc_auc:.4f})',
+    line=dict(color='#56ab2f', width=3)
+))
+fig_roc.add_trace(go.Scatter(
+    x=[0, 1], y=[0, 1],
+    mode='lines',
+    name='Random Classifier',
+    line=dict(color='red', dash='dash')
+))
+fig_roc.update_layout(
+    title='Receiver Operating Characteristic (ROC) Curve',
+    xaxis_title='False Positive Rate',
+    yaxis_title='True Positive Rate',
+    height=500
+)
+st.plotly_chart(fig_roc, use_container_width=True)
 
 # ========== Tree Visualization ==========
 st.markdown("### 🌲 โครงสร้าง Decision Tree")
@@ -169,34 +229,38 @@ st.markdown("### 🌲 โครงสร้าง Decision Tree")
 tab1, tab2 = st.tabs(["📊 Tree Visualization", "📈 Feature Importance"])
 
 with tab1:
-    fig_tree, ax_tree = plt.subplots(figsize=(20, 10))
+    fig_tree, ax_tree = plt.subplots(figsize=(20, 12))
     plot_tree(
         model,
-        feature_names=feature_names,
+        feature_names=feature_cols,
+        class_names=['No Disease', 'Disease'],
         filled=True,
         rounded=True,
-        fontsize=9,
+        fontsize=10,
         ax=ax_tree,
-        impurity=False,
-        proportion=True
+        impurity=True,
+        proportion=False
     )
-    ax_tree.set_title(f'Decision Tree (max_depth={max_depth}, criterion={criterion})', fontsize=16)
+    ax_tree.set_title(f'Decision Tree (max_depth={max_depth}, criterion={criterion})', 
+                      fontsize=16, fontweight='bold')
     st.pyplot(fig_tree)
     
     st.markdown("""
     **วิธีอ่าน Tree:**
     - **กล่องบนสุด (root)**: เงื่อนไขแรกที่แบ่งข้อมูลทั้งหมด
-    - **ตัวเลขในกล่อง**: ค่าเฉลี่ยของ target ใน node นั้น
-    - **sample**: จำนวนตัวอย่างใน node
-    - **สีเข้ม**: ค่า target สูง (บ้านแพง)
-    - **สีอ่อน**: ค่า target ต่ำ (บ้านถูก)
+    - **gini/entropy**: ค่า impurity ของ node
+    - **samples**: จำนวนตัวอย่างใน node
+    - **value**: [จำนวน class 0, จำนวน class 1]
+    - **class**: class ที่ทำนายได้ (class ที่มีจำนวนมากกว่า)
+    - **สีเข้ม**: มีความแน่นอนสูง
+    - **สีอ่อน**: มีความแน่นอนต่ำ
     """)
 
 with tab2:
     # Feature Importance
     importances = model.feature_importances_
     importance_df = pd.DataFrame({
-        'Feature': feature_names,
+        'Feature': feature_cols,
         'Importance': importances
     }).sort_values('Importance', ascending=True)
     
@@ -209,68 +273,48 @@ with tab2:
         color='Importance',
         color_continuous_scale='Viridis'
     )
-    fig_imp.update_layout(height=500)
+    fig_imp.update_layout(height=600)
     st.plotly_chart(fig_imp, use_container_width=True)
     
     st.markdown("""
-    **Feature ที่สำคัญที่สุดสำหรับ California Housing:**
-    - 🏠 **Median Income**: รายได้เฉลี่ยมีผลมากที่สุดต่อราคาบ้าน
-    - 📍 **Latitude/Longitude**: ตำแหน่งที่ตั้งสำคัญมาก
-    - 🏘️ **Ave Occup**: จำนวนคนต่อครัวเรือน
-    - 🏚️ **Housing Age**: อายุบ้านมีผลปานกลาง
+    **Feature ที่สำคัญที่สุดสำหรับ Heart Disease:**
+    - 🫀 **chest_pain_type**: ประเภทอาการเจ็บหน้าอก
+    - 💓 **max_heart_rate**: อัตราการเต้นหัวใจสูงสุด
+    - 🩸 **systolic_bp**: ความดันโลหิตตัวบน
+    - 📊 **risk_score**: คะแนนความเสี่ยง
+    - 🧬 **age**: อายุ
     """)
 
-# ========== Predicted vs Actual ==========
-st.markdown("### 🔍 Predicted vs Actual Values")
-fig_scatter = go.Figure()
-fig_scatter.add_trace(go.Scatter(
-    x=y_test, y=y_pred,
-    mode='markers',
-    marker=dict(color='#56ab2f', size=5, opacity=0.5),
-    name='Predictions'
-))
-max_val = max(y_test.max(), y_pred.max())
-fig_scatter.add_trace(go.Scatter(
-    x=[0, max_val], y=[0, max_val],
-    mode='lines',
-    line=dict(color='red', dash='dash', width=2),
-    name='Perfect Prediction'
-))
-fig_scatter.update_layout(
-    xaxis_title="Actual Price ($)",
-    yaxis_title="Predicted Price ($)",
-    height=400
-)
-st.plotly_chart(fig_scatter, use_container_width=True)
+# ========== Decision Boundary ==========
+st.markdown("### 🗺️ Decision Boundary (2D Visualization)")
 
-# ========== Decision Boundary (ใช้ 2 features) ==========
-st.markdown("### 🗺️ Decision Boundary (Latitude vs Longitude)")
-st.markdown("ดูว่า Decision Tree แบ่งพื้นที่ California ออกเป็น region ต่างๆ อย่างไร")
+st.markdown("เลือก 2 features เพื่อดูว่า Decision Tree แบ่งพื้นที่อย่างไร")
 
 col_a, col_b = st.columns(2)
 with col_a:
-    feature_x = st.selectbox("Feature แกน X", feature_names, index=feature_names.index('longitude'))
+    feature_x = st.selectbox("Feature แกน X", feature_cols, index=feature_cols.index('age'))
 with col_b:
-    feature_y = st.selectbox("Feature แกน Y", feature_names, index=feature_names.index('latitude'))
+    feature_y = st.selectbox("Feature แกน Y", feature_cols, index=feature_cols.index('max_heart_rate'))
 
-# สร้าง grid
-x_min, x_max = X[feature_x].min() - 0.1, X[feature_x].max() + 0.1
-y_min, y_max = X[feature_y].min() - 0.1, X[feature_y].max() + 0.1
-
-# สร้าง dataframe ใหม่ที่มีแค่ 2 features สำหรับ visualization
+# สร้าง model ใหม่ด้วย 2 features
 X_2d = X[[feature_x, feature_y]]
-X_train_2d, _, _, _ = train_test_split(X_2d, y, test_size=0.2, random_state=42)
+X_train_2d, X_test_2d, y_train_2d, y_test_2d = train_test_split(
+    X_2d, y, test_size=0.2, random_state=42, stratify=y
+)
 
-model_2d = DecisionTreeRegressor(
+model_2d = DecisionTreeClassifier(
     max_depth=max_depth,
     min_samples_split=min_samples_split,
     min_samples_leaf=min_samples_leaf,
     criterion=criterion,
     random_state=42
 )
-model_2d.fit(X_train_2d, y_train)
+model_2d.fit(X_train_2d, y_train_2d)
 
 # สร้าง mesh grid
+x_min, x_max = X_2d[feature_x].min() - 1, X_2d[feature_x].max() + 1
+y_min, y_max = X_2d[feature_y].min() - 1, X_2d[feature_y].max() + 1
+
 xx, yy = np.meshgrid(
     np.linspace(x_min, x_max, 100),
     np.linspace(y_min, y_max, 100)
@@ -279,108 +323,158 @@ grid = np.c_[xx.ravel(), yy.ravel()]
 Z = model_2d.predict(grid).reshape(xx.shape)
 
 fig_boundary = go.Figure()
+
+# Decision boundary
 fig_boundary.add_trace(go.Contour(
     x=np.linspace(x_min, x_max, 100),
     y=np.linspace(y_min, y_max, 100),
     z=Z,
-    colorscale='Viridis',
-    opacity=0.7,
-    showscale=True,
-    colorbar=dict(title="Price ($)")
+    colorscale=['#a8e063', '#ff416c'],
+    opacity=0.5,
+    showscale=False,
+    name='Decision Boundary'
 ))
+
+# Data points
 fig_boundary.add_trace(go.Scatter(
-    x=X[feature_x].sample(500, random_state=42),
-    y=X[feature_y].sample(500, random_state=42),
+    x=X_test_2d[feature_x],
+    y=X_test_2d[feature_y],
     mode='markers',
-    marker=dict(color='white', size=3, opacity=0.3),
-    name='Data Points'
+    marker=dict(
+        color=y_test_2d,
+        colorscale=['#56ab2f', '#ff416c'],
+        size=8,
+        line=dict(width=1, color='black')
+    ),
+    name='Test Data',
+    text=[f'Actual: {int(val)}' for val in y_test_2d]
 ))
+
 fig_boundary.update_layout(
     xaxis_title=feature_x,
     yaxis_title=feature_y,
-    height=500,
+    height=600,
     title=f'Decision Boundary: {feature_x} vs {feature_y}'
 )
 st.plotly_chart(fig_boundary, use_container_width=True)
 
 # ========== ส่วนทำนาย ==========
 st.markdown("---")
-st.markdown("## 🎯 ลองทำนายราคาบ้านของคุณเอง!")
-st.markdown("ปรับค่า features ด้านล่างแล้วดูการทำนาย")
+st.markdown("## 🎯 ลองทำนายความเสี่ยงโรคหัวใจ!")
 
 st.sidebar.markdown("---")
-st.sidebar.header("🏠 กรอกข้อมูลบ้าน")
+st.sidebar.header("🏥 กรอกข้อมูลผู้ป่วย")
 
-feature_ranges = {
-    'longitude': (-124.35, -114.31),
-    'latitude': (32.54, 41.95),
-    'housing_median_age': (1.0, 52.0),
-    'total_rooms': (6.0, 39320.0),
-    'total_bedrooms': (1.0, 6445.0),
-    'population': (3.0, 35682.0),
-    'households': (1.0, 6082.0),
-    'median_income': (0.50, 15.00)
-}
+# สร้าง input สำหรับแต่ละ feature
+input_data = {}
 
-feature_labels = {
-    'longitude': '🌍 Longitude (ลองจิจูด)',
-    'latitude': '🌎 Latitude (ละติจูด)',
-    'housing_median_age': '🏚️ อายุบ้านเฉลี่ย (ปี)',
-    'total_rooms': '🚪 จำนวนห้องทั้งหมด',
-    'total_bedrooms': '🛏️ จำนวนห้องนอน',
-    'population': '👥 จำนวนประชากร',
-    'households': '🏘️ จำนวนครัวเรือน',
-    'median_income': '💰 รายได้เฉลี่ย (x$10,000)'
-}
+# Numeric features
+for feature in numeric_features:
+    if feature in df.columns:
+        min_val = float(df[feature].min())
+        max_val = float(df[feature].max())
+        default_val = float(df[feature].median())
+        
+        if feature in ['age', 'bmi', 'risk_score']:
+            input_data[feature] = st.sidebar.slider(
+                f"📊 {feature}",
+                min_value=min_val,
+                max_value=max_val,
+                value=default_val,
+                step=0.1
+            )
+        elif feature in ['systolic_bp', 'diastolic_bp', 'cholesterol_mg_dl', 
+                         'fasting_blood_sugar', 'max_heart_rate']:
+            input_data[feature] = st.sidebar.number_input(
+                f"📊 {feature}",
+                min_value=min_val,
+                max_value=max_val,
+                value=default_val,
+                step=1.0
+            )
 
-input_values = {}
-for feature in feature_names:
-    min_val, max_val = feature_ranges.get(feature, (0, 100))
-    default_val = float(X[feature].median())
-    
-    if feature in ['longitude', 'latitude']:
-        input_values[feature] = st.sidebar.slider(
-            feature_labels[feature],
-            min_value=float(min_val),
-            max_value=float(max_val),
-            value=default_val,
-            step=0.01
-        )
-    elif feature == 'median_income':
-        input_values[feature] = st.sidebar.slider(
-            feature_labels[feature],
-            min_value=float(min_val),
-            max_value=float(max_val),
-            value=default_val,
-            step=0.1
-        )
-    else:
-        input_values[feature] = st.sidebar.number_input(
-            feature_labels[feature],
-            min_value=float(min_val),
-            max_value=float(max_val),
-            value=default_val,
-            step=1.0
-        )
+# Categorical features
+for feature in categorical_features:
+    if feature in df.columns:
+        unique_vals = df[feature].unique()
+        default_val = df[feature].mode()[0]
+        
+        if feature == 'sex':
+            input_data[feature] = st.sidebar.selectbox(
+                f"👤 {feature}",
+                options=unique_vals,
+                index=list(unique_vals).index(default_val)
+            )
+        elif feature in ['diabetes', 'family_history']:
+            input_data[feature] = st.sidebar.selectbox(
+                f"🧬 {feature}",
+                options=unique_vals,
+                index=list(unique_vals).index(default_val)
+            )
+        elif feature in ['smoking_status', 'exercise_level', 'chest_pain_type', 'ecg_result']:
+            input_data[feature] = st.sidebar.selectbox(
+                f"🏥 {feature}",
+                options=unique_vals,
+                index=list(unique_vals).index(default_val)
+            )
+
+# Encode categorical features for prediction
+input_encoded = {}
+for col in feature_cols:
+    if col in numeric_features:
+        input_encoded[col] = input_data[col]
+    elif col in categorical_features and col in label_encoders:
+        try:
+            input_encoded[col] = label_encoders[col].transform([str(input_data[col])])[0]
+        except:
+            input_encoded[col] = 0
 
 # ========== ทำนาย ==========
-input_df = pd.DataFrame([input_values])
+input_df = pd.DataFrame([input_encoded])
 prediction = model.predict(input_df)[0]
+prediction_proba = model.predict_proba(input_df)[0]
 
 # ========== แสดงผลทำนาย ==========
 st.markdown("### 🎉 ผลทำนาย")
 
+if prediction == 1:
+    risk_level = "มีความเสี่ยงสูง"
+    risk_class = "risk-high"
+    emoji = "⚠️"
+else:
+    risk_level = "ความเสี่ยงต่ำ"
+    risk_class = "risk-low"
+    emoji = "✅"
+
 st.markdown(f"""
-<div class="prediction-box">
-    <div style="font-size:1.2em;">💵 ราคาบ้านที่ทำนายได้</div>
-    <div class="prediction-value">${prediction:,.0f}</div>
-    <div style="font-size:1.1em;">หรือประมาณ {prediction*36:,.0f} บาท</div>
+<div class="prediction-box {risk_class}">
+    <div style="font-size:1.5em;">{emoji} {risk_level}</div>
+    <div class="prediction-value">{'เป็นโรคหัวใจ' if prediction == 1 else 'ไม่เป็นโรคหัวใจ'}</div>
+    <div style="font-size:1.2em;">ความน่าจะเป็น: {prediction_proba[prediction]*100:.2f}%</div>
 </div>
 """, unsafe_allow_html=True)
 
-# ========== แสดง Decision Path ==========
+# แสดงความน่าจะเป็นของแต่ละ class
+st.markdown("### 📊 ความน่าจะเป็นของแต่ละ Class")
+
+fig_proba = go.Figure()
+fig_proba.add_trace(go.Bar(
+    x=['ไม่เป็นโรค (0)', 'เป็นโรค (1)'],
+    y=prediction_proba,
+    marker_color=['#56ab2f', '#ff416c'],
+    text=[f'{p*100:.2f}%' for p in prediction_proba],
+    textposition='outside'
+))
+fig_proba.update_layout(
+    title='Probability Distribution',
+    yaxis_title='Probability',
+    yaxis_range=[0, 1],
+    height=400
+)
+st.plotly_chart(fig_proba, use_container_width=True)
+
+# ========== Decision Path ==========
 st.markdown("### 🛤️ Decision Path (เส้นทางที่ต้นไม้ตัดสินใจ)")
-st.markdown("ดูว่า Decision Tree ใช้เงื่อนไขอะไรบ้างเพื่อทำนายบ้านหลังนี้")
 
 node_indicator = model.decision_path(input_df)
 feature_arr = model.tree_.feature
@@ -393,11 +487,12 @@ for node_id in node_index:
     if node_id == node_index[-1]:  # leaf node
         path_info.append({
             'Node': node_id,
-            'Condition': f'🎯 LEAF NODE → Predict: ${model.tree_.value[node_id][0][0]:,.0f}',
-            'Samples': model.tree_.n_node_samples[node_id]
+            'Condition': f'🎯 LEAF NODE → Predict: {"Disease" if model.tree_.value[node_id][0][1] > model.tree_.value[node_id][0][0] else "No Disease"}',
+            'Samples': model.tree_.n_node_samples[node_id],
+            'Value': f"[{int(model.tree_.value[node_id][0][0])}, {int(model.tree_.value[node_id][0][1])}]"
         })
     else:
-        feature_name = feature_names[feature_arr[node_id]]
+        feature_name = feature_cols[feature_arr[node_id]]
         threshold = threshold_arr[node_id]
         value = input_df[feature_name].values[0]
         
@@ -405,88 +500,69 @@ for node_id in node_index:
             path_info.append({
                 'Node': node_id,
                 'Condition': f'✅ {feature_name} ≤ {threshold:.2f} (ค่าจริง: {value:.2f})',
-                'Samples': model.tree_.n_node_samples[node_id]
+                'Samples': model.tree_.n_node_samples[node_id],
+                'Value': f"[{int(model.tree_.value[node_id][0][0])}, {int(model.tree_.value[node_id][0][1])}]"
             })
         else:
             path_info.append({
                 'Node': node_id,
                 'Condition': f'❌ {feature_name} > {threshold:.2f} (ค่าจริง: {value:.2f})',
-                'Samples': model.tree_.n_node_samples[node_id]
+                'Samples': model.tree_.n_node_samples[node_id],
+                'Value': f"[{int(model.tree_.value[node_id][0][0])}, {int(model.tree_.value[node_id][0][1])}]"
             })
 
 path_df = pd.DataFrame(path_info)
 st.dataframe(path_df, use_container_width=True, hide_index=True)
 
-# ========== Feature Distribution ==========
-st.markdown("### 📊 การกระจายตัวของ Features ที่คุณกรอก")
+# ========== Distribution Analysis ==========
+st.markdown("### 📊 การกระจายตัวของข้อมูลตามกลุ่ม")
 
-col_a, col_b = st.columns(2)
-with col_a:
-    fig_inc = px.histogram(
-        X, x='median_income', nbins=50,
-        title='การกระจายตัวของรายได้เฉลี่ย',
-        labels={'median_income': 'Median Income (x$10k)'}
+tab3, tab4 = st.tabs(["📈 Numeric Features", "📊 Categorical Features"])
+
+with tab3:
+    selected_feature = st.selectbox(
+        "เลือก Feature เพื่อดูการกระจายตัว",
+        numeric_features,
+        index=0
     )
-    fig_inc.add_vline(x=input_values['median_income'], line_dash="dash", line_color="red",
-                      annotation_text=f"คุณ: {input_values['median_income']:.2f}")
-    st.plotly_chart(fig_inc, use_container_width=True)
-
-with col_b:
-    fig_age = px.histogram(
-        X, x='housing_median_age', nbins=50,
-        title='การกระจายตัวของอายุบ้าน',
-        labels={'housing_median_age': 'Housing Median Age'}
+    
+    fig_dist = px.histogram(
+        df,
+        x=selected_feature,
+        color='heart_disease',
+        marginal='box',
+        title=f'การกระจายตัวของ {selected_feature} ตามกลุ่มโรคหัวใจ',
+        color_discrete_map={0: '#56ab2f', 1: '#ff416c'},
+        labels={'heart_disease': 'โรคหัวใจ'}
     )
-    fig_age.add_vline(x=input_values['housing_median_age'], line_dash="dash", line_color="red",
-                      annotation_text=f"คุณ: {input_values['housing_median_age']:.0f}")
-    st.plotly_chart(fig_age, use_container_width=True)
+    fig_dist.update_layout(height=500)
+    st.plotly_chart(fig_dist, use_container_width=True)
 
-# ========== เปรียบเทียบกับ KNN ==========
-st.markdown("---")
-st.markdown("### ⚖️ เปรียบเทียบ Decision Tree vs KNN")
-
-# Train KNN สำหรับเปรียบเทียบ
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.preprocessing import StandardScaler
-
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train)
-X_test_scaled = scaler.transform(X_test)
-
-knn = KNeighborsRegressor(n_neighbors=5, weights='distance')
-knn.fit(X_train_scaled, y_train)
-y_pred_knn = knn.predict(X_test_scaled)
-
-comparison_df = pd.DataFrame({
-    'Model': ['Decision Tree', 'KNN'],
-    'R² Score': [r2, r2_score(y_test, y_pred_knn)],
-    'RMSE ($)': [rmse, np.sqrt(mean_squared_error(y_test, y_pred_knn))],
-    'MAE ($)': [mae, mean_absolute_error(y_test, y_pred_knn)],
-    'Training Time': ['เร็วมาก ⚡', 'ช้ากว่า (ต้องคำนวณระยะทาง) 🐢'],
-    'Interpretability': ['สูงมาก (เห็นกฎชัดเจน) ✅', 'ต่ำ (black box) ❌'],
-    'Overfitting Risk': ['สูง (ต้อง prune) ⚠️', 'ต่ำ (ขึ้นกับ K) ✅']
-})
-
-st.dataframe(comparison_df, use_container_width=True, hide_index=True)
-
-fig_comp = go.Figure()
-fig_comp.add_trace(go.Bar(
-    x=comparison_df['Model'],
-    y=comparison_df['R² Score'],
-    name='R² Score',
-    marker_color=['#56ab2f', '#00c9ff']
-))
-fig_comp.update_layout(
-    title='เปรียบเทียบ R² Score: Decision Tree vs KNN',
-    yaxis_title='R² Score',
-    height=400
-)
-st.plotly_chart(fig_comp, use_container_width=True)
+with tab4:
+    selected_cat = st.selectbox(
+        "เลือก Categorical Feature",
+        categorical_features,
+        index=0
+    )
+    
+    fig_cat = px.histogram(
+        df,
+        x=selected_cat,
+        color='heart_disease',
+        barmode='group',
+        title=f'การกระจายตัวของ {selected_cat} ตามกลุ่มโรคหัวใจ',
+        color_discrete_map={0: '#56ab2f', 1: '#ff416c'},
+        labels={'heart_disease': 'โรคหัวใจ'}
+    )
+    fig_cat.update_layout(height=500)
+    st.plotly_chart(fig_cat, use_container_width=True)
 
 # ========== ข้อดี/ข้อเสีย ==========
+st.markdown("---")
 st.markdown("### ✅ ข้อดี / ❌ ข้อเสียของ Decision Tree")
 
 col1, col2 = st.columns(2)
+
 with col1:
     st.success("""
     **✅ ข้อดี:**
@@ -496,6 +572,7 @@ with col1:
     - **เร็วทั้ง train และ predict**
     - **เห็น feature importance** ชัดเจน
     - **ไม่สมมติการกระจายตัว** ของข้อมูล
+    - **เหมาะสำหรับข้อมูลทางการแพทย์** - อธิบายให้หมอเข้าใจได้
     """)
 
 with col2:
@@ -505,12 +582,13 @@ with col2:
     - **ไม่ stable** - ข้อมูลเปลี่ยนนิดเดียว ต้นไม้เปลี่ยนเยอะ
     - **Greedy algorithm** - ไม่การันตี global optimum
     - **จับความสัมพันธ์เชิงเส้น** ไม่ดีเท่า linear models
-    - **Bias ต่อ feature ที่มีค่ามาก** (เช่น total_rooms)
+    - **Bias ต่อ feature ที่มีค่ามาก**
     - **Extrapolate ไม่ได้** - ทำนายค่าที่อยู่นอกช่วง training ไม่ได้
+    - **ควรใช้ Random Forest** แทนสำหรับ production
     """)
 
 # ========== Tips ==========
-st.markdown("### 💡 เคล็ดลับการใช้งาน Decision Tree")
+st.markdown("### 💡 เคล็ดลับการใช้งาน Decision Tree สำหรับ Heart Disease")
 
 st.info("""
 **1. ป้องกัน Overfitting:**
@@ -518,20 +596,21 @@ st.info("""
 - ใช้ `min_samples_leaf=5-10` เพื่อลด leaf ที่มีตัวอย่างน้อย
 - ลองใช้ **Random Forest** (ensemble ของ trees) เพื่อลด variance
 
-**2. เลือก Criterion:**
-- `squared_error`: ค่า default, ทำงานดีกับข้อมูลส่วนใหญ่
-- `absolute_error`: ทนทานต่อ outlier มากกว่า
-- `friedman_mse`: ปรับปรุงสำหรับ regression
-
-**3. Feature Engineering:**
+**2. Feature Engineering:**
 - Decision Tree จับ interaction ระหว่าง features ได้ดี
-- ลองสร้าง features ใหม่เช่น `rooms_per_household = total_rooms / households`
+- ลองสร้าง features ใหม่เช่น `bp_ratio = systolic_bp / diastolic_bp`
+- ใช้ `risk_score` ที่มีอยู่แล้วเป็น feature สำคัญ
 
-**4. เปรียบเทียบกับโมเดลอื่น:**
-- ถ้าข้อมูลมีความสัมพันธ์เชิงเส้น → ลอง **Linear Regression**
-- ถ้าต้องการความแม่นยำสูง → ลอง **Random Forest** หรือ **Gradient Boosting**
-- ถ้าต้องการ interpretability → **Decision Tree** คือคำตอบ
+**3. Interpretation:**
+- ใช้ tree visualization เพื่ออธิบายให้หมอเข้าใจ
+- ดู decision path ว่าใช้เงื่อนไขอะไรบ้าง
+- Feature importance ช่วยระบุว่าอะไรสำคัญที่สุด
+
+**4. Production:**
+- ใช้ Random Forest หรือ Gradient Boosting แทน
+- Validate ด้วย cross-validation
+- Monitor performance อย่างสม่ำเสมอ
 """)
 
 st.markdown("---")
-st.caption("🌳 Decision Tree California Housing Predictor | Machine Learning Explorer")
+st.caption("🌳 Decision Tree Heart Disease Predictor | Machine Learning Explorer")
