@@ -131,7 +131,6 @@ with col_info:
         <p class="profile-name">👨‍🎓 {STUDENT_NAME}</p>
         <p class="profile-info">🆔 รหัสนักศึกษา: <b>{STUDENT_ID}</b></p>
         <p class="profile-info">🏫 {STUDENT_SECTION} | สาขา{STUDENT_PROGRAM}</p>
-        <p class="profile-info">📚 {STUDENT_YEAR}</p>
     </div>
     """, unsafe_allow_html=True)
 
