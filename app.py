@@ -105,7 +105,7 @@ STUDENT_SECTION = "หมู่เรียน 66/44"         # หมู่เ�
 STUDENT_PROGRAM = "วิทยาการคอมพิวเตอร์" # สาขา
 STUDENT_YEAR = "ชั้นปีที่ 4"            # ชั้นปี
 
-PROFILE_IMAGE_PATH = "profile.png"     # path ของรูปโปรไฟล์
+PROFILE_IMAGE_PATH = "profile.jpg"     # path ของรูปโปรไฟล์
 # ============================================================
 
 col_img, col_info = st.columns([1, 2])
