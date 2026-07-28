@@ -1,261 +1,247 @@
+"""
+============================================================
+Heart Disease Prediction Web App (Custom Dataset)
+รันด้วยคำสั่ง: streamlit run app.py
+============================================================
+"""
+
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import plotly.express as px
+import os
 import plotly.graph_objects as go
-from sklearn.tree import DecisionTreeClassifier, plot_tree
+from sklearn.tree import DecisionTreeClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, roc_curve, auc
-import os
+from sklearn.metrics import accuracy_score, roc_auc_score
 
-st.set_page_config(page_title="Decision Tree - Heart Disease", page_icon="🫀", layout="wide")
+# ==================== Configuration ====================
+DEVELOPER_NAME = "pxrawit"
+DEVELOPER_EMAIL = "puwaritchammunkung@gmail.com"
+DATASET_PATH = "heart_disease_patient_eda_2000_records2.xlsx"
 
-# ========== Custom CSS ==========
+# ==================== Page Configuration ====================
+st.set_page_config(
+    page_title="Heart Disease Predictor",
+    page_icon="🫀",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# ==================== Custom CSS ====================
 st.markdown("""
 <style>
-    .prediction-box {
-        padding: 25px;
-        border-radius: 15px;
-        text-align: center;
-        color: white;
-        margin: 10px 0;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-    }
-    .prediction-value { font-size: 2.5em; font-weight: bold; margin: 10px 0; }
-    .risk-high { background: linear-gradient(135deg, #ff416c 0%, #ff4b2b 100%); }
-    .risk-low { background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%); }
-    .monitor-bg { background-color: #000; border-radius: 10px; padding: 10px; border: 2px solid #333; }
+    .stApp { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); }
+    .main-title { font-size: 2.5rem; font-weight: 700; color: #2c3e50; text-align: center; margin-bottom: 0.5rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.1); }
+    .sub-title { font-size: 1.1rem; color: #7f8c8d; text-align: center; margin-bottom: 2rem; }
+    .result-safe { background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; font-size: 1.3rem; font-weight: 600; box-shadow: 0 4px 15px rgba(17, 153, 142, 0.3); }
+    .result-danger { background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%); color: white; padding: 2rem; border-radius: 15px; text-align: center; font-size: 1.3rem; font-weight: 600; box-shadow: 0 4px 15px rgba(235, 51, 73, 0.3); }
+    [data-testid="stSidebar"] { background: linear-gradient(180deg, #2c3e50 0%, #34495e 100%); }
+    [data-testid="stSidebar"] * { color: white !important; }
+    .stButton > button { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: 600; font-size: 1.1rem; padding: 0.6rem 2rem; border-radius: 10px; border: none; transition: all 0.3s ease; }
+    .stButton > button:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4); }
+    .email-card { background: rgba(255, 255, 255, 0.1); padding: 1.2rem; border-radius: 10px; text-align: center; backdrop-filter: blur(10px); }
+    .email-link { color: #ecf0f1 !important; text-decoration: none; font-size: 1rem; font-weight: 500; word-break: break-all; }
+    .email-link:hover { color: #3498db !important; }
+    .dev-profile { text-align: center; padding: 1rem; background: rgba(255, 255, 255, 0.05); border-radius: 10px; margin-bottom: 1rem; }
+    .dev-name { font-size: 1.2rem; font-weight: 700; color: #ecf0f1 !important; margin: 0.5rem 0; }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("# 🫀 Decision Tree: ทำนายความเสี่ยงโรคหัวใจ")
-st.markdown("แบบจำลองที่อธิบายได้ง่าย เหมือนการถาม-ตอบ เพื่อประเมินสุขภาพหัวใจของคุณ")
-
-# ========== โหลดข้อมูล ==========
-@st.cache_data
-def load_data():
-    paths = ["heart_disease_patient_eda_2000_records2.xlsx", "data/heart_disease_patient_eda_2000_records2.xlsx"]
-    for path in paths:
-        if os.path.exists(path):
-            return pd.read_excel(path)
-    st.error("❌ ไม่พบไฟล์ heart_disease_patient_eda_2000_records2.xlsx")
-    return None
-
-df = load_data()
-if df is None:
-    st.stop()
-
-# ========== Preprocessing ==========
-numeric_features = ['age', 'bmi', 'systolic_bp', 'diastolic_bp', 'cholesterol_mg_dl', 'fasting_blood_sugar', 'max_heart_rate', 'risk_score']
-categorical_features = ['sex', 'smoking_status', 'exercise_level', 'diabetes', 'family_history', 'chest_pain_type', 'ecg_result']
-
-label_encoders = {}
-df_encoded = df.copy()
-for col in categorical_features:
-    if col in df.columns:
+# ==================== Load Data & Train Model ====================
+@st.cache_resource
+def load_and_train():
+    if not os.path.exists(DATASET_PATH):
+        st.error(f"❌ ไม่พบไฟล์ {DATASET_PATH} กรุณาวางไฟล์ไว้ในโฟลเดอร์เดียวกัน")
+        st.stop()
+    
+    df = pd.read_excel(DATASET_PATH)
+    
+    # แยก Features และ Target
+    target_col = 'heart_disease'
+    numeric_cols = ['age', 'bmi', 'systolic_bp', 'diastolic_bp', 'cholesterol_mg_dl', 'fasting_blood_sugar', 'max_heart_rate']
+    categorical_cols = ['sex', 'smoking_status', 'exercise_level', 'diabetes', 'family_history', 'chest_pain_type', 'ecg_result']
+    
+    # Encode Categorical Data
+    encoders = {}
+    df_encoded = df.copy()
+    for col in categorical_cols:
         le = LabelEncoder()
         df_encoded[col] = le.fit_transform(df[col].astype(str))
-        label_encoders[col] = le
+        encoders[col] = le
+        
+    feature_cols = numeric_cols + categorical_cols
+    X = df_encoded[feature_cols]
+    y = df_encoded[target_col]
+    
+    # Train Model
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    model = DecisionTreeClassifier(max_depth=5, random_state=42)
+    model.fit(X_train, y_train)
+    
+    # Metrics
+    y_pred = model.predict(X_test)
+    y_prob = model.predict_proba(X_test)[:, 1]
+    metrics = {
+        'accuracy': accuracy_score(y_test, y_pred),
+        'roc_auc': roc_auc_score(y_test, y_prob)
+    }
+    
+    return model, encoders, feature_cols, numeric_cols, categorical_cols, metrics
 
-feature_cols = numeric_features + [col for col in categorical_features if col in df.columns]
-X = df_encoded[feature_cols]
-y = df_encoded['heart_disease']
+try:
+    model, encoders, feature_cols, numeric_cols, categorical_cols, metrics = load_and_train()
+except Exception as e:
+    st.error(f"❌ เกิดข้อผิดพลาด: {e}")
+    st.stop()
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-
-# ========== Sidebar: กรอกข้อมูล ==========
-st.sidebar.markdown("### 🏥 กรอกข้อมูลผู้ป่วย")
-st.sidebar.markdown("---")
-
-input_data = {}
-st.sidebar.markdown("#### 📊 สัญญาณชีพ")
-input_data['age'] = st.sidebar.slider("อายุ (ปี)", int(df['age'].min()), int(df['age'].max()), int(df['age'].median()))
-input_data['bmi'] = st.sidebar.slider("ค่า BMI", float(df['bmi'].min()), float(df['bmi'].max()), float(df['bmi'].median()), 0.1)
-input_data['max_heart_rate'] = st.sidebar.number_input("อัตราการเต้นหัวใจสูงสุด (bpm)", int(df['max_heart_rate'].min()), int(df['max_heart_rate'].max()), int(df['max_heart_rate'].median()))
-input_data['systolic_bp'] = st.sidebar.number_input("ความดันตัวบน (mmHg)", int(df['systolic_bp'].min()), int(df['systolic_bp'].max()), int(df['systolic_bp'].median()))
-input_data['cholesterol_mg_dl'] = st.sidebar.number_input("ระดับคอเลสเตอรอล", int(df['cholesterol_mg_dl'].min()), int(df['cholesterol_mg_dl'].max()), int(df['cholesterol_mg_dl'].median()))
-
-st.sidebar.markdown("#### 🏃‍♂️ ประวัติและไลฟ์สไตล์")
-input_data['sex'] = st.sidebar.selectbox("เพศ", df['sex'].unique())
-input_data['chest_pain_type'] = st.sidebar.selectbox("ลักษณะอาการเจ็บหน้าอก", df['chest_pain_type'].unique())
-input_data['smoking_status'] = st.sidebar.selectbox("สถานะการสูบบุหรี่", df['smoking_status'].unique())
-input_data['diabetes'] = st.sidebar.selectbox("เป็นเบาหวาน", df['diabetes'].unique())
-
-# Encode สำหรับทำนาย
-input_encoded = {}
-for col in feature_cols:
-    if col in numeric_features:
-        input_encoded[col] = input_data.get(col, df[col].median())
-    elif col in categorical_features and col in label_encoders:
-        try:
-            input_encoded[col] = label_encoders[col].transform([str(input_data[col])])[0]
-        except:
-            input_encoded[col] = 0
-
-# เติมค่า default ให้ครบทุก feature หากไม่มีใน sidebar
-for col in feature_cols:
-    if col not in input_encoded:
-        input_encoded[col] = df_encoded[col].mode()[0]
-
-# ========== เทรนโมเดล ==========
-@st.cache_resource
-def train_tree(X_tr, y_tr):
-    model = DecisionTreeClassifier(max_depth=5, min_samples_split=10, min_samples_leaf=5, criterion='gini', random_state=42)
-    model.fit(X_tr, y_tr)
-    return model
-
-model = train_tree(X_train, y_train)
-
-# ========== ทำนายผล ==========
-input_df = pd.DataFrame([input_encoded])
-prediction = model.predict(input_df)[0]
-prediction_proba = model.predict_proba(input_df)[0]
-
-# กำหนดสีและข้อความตามผลทำนาย
-if prediction == 1:
-    risk_level, risk_class, emoji, ecg_color = "มีความเสี่ยงสูง", "risk-high", "⚠️", "#ff416c"
-    result_text = "ควรปรึกษาแพทย์เพื่อตรวจวินิจฉัยเพิ่มเติม"
-else:
-    risk_level, risk_class, emoji, ecg_color = "ความเสี่ยงต่ำ", "risk-low", "✅", "#56ab2f"
-    result_text = "สุขภาพหัวใจอยู่ในเกณฑ์ที่ดี รักษาพฤติกรรมนี้ต่อไป"
-
-# ========== ส่วนแสดงผลหลัก (Hero Section) ==========
-col1, col2 = st.columns([1, 1.5])
-
-with col1:
+# ==================== Sidebar ====================
+with st.sidebar:
     st.markdown(f"""
-    <div class="prediction-box {risk_class}">
-        <div style="font-size:1.3em;">{emoji} ผลการประเมิน: {risk_level}</div>
-        <div class="prediction-value">{'ตรวจพบความเสี่ยง' if prediction == 1 else 'ไม่พบความเสี่ยง'}</div>
-        <div style="font-size:1.1em; margin-top:10px;">ความน่าจะเป็น: <b>{prediction_proba[prediction]*100:.1f}%</b></div>
-        <div style="font-size:0.9em; margin-top:15px; opacity:0.9;">{result_text}</div>
-    </div>
+        <div class="dev-profile">
+            <div style="font-size: 3rem;">👨‍💻</div>
+            <div class="dev-name">{DEVELOPER_NAME}</div>
+        </div>
     """, unsafe_allow_html=True)
     
-    # แสดง Feature Importance แบบย่อ
-    importances = model.feature_importances_
-    top_features = pd.DataFrame({'Feature': feature_cols, 'Importance': importances}).sort_values('Importance', ascending=False).head(3)
-    st.markdown("##### 🔑 ปัจจัยที่มีผลต่อการตัดสินใจมากที่สุด:")
-    for _, row in top_features.iterrows():
-        st.progress(float(row['Importance']))
-        st.caption(f"{row['Feature'].replace('_', ' ').title()} ({row['Importance']:.1%})")
+    st.markdown("---")
+    st.markdown("### 📊 โมเดล Information")
+    st.info(f"""
+    **Algorithm:** Decision Tree  
+    **Accuracy:** {metrics['accuracy']:.2%}  
+    **ROC-AUC:** {metrics['roc_auc']:.3f}  
+    **Dataset:** 2,000 Records
+    """)
+    
+    st.markdown("---")
+    st.markdown("### 📧 ติดต่อผู้พัฒนา")
+    st.markdown(f"""
+        <div class="email-card">
+            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">✉️</div>
+            <a href="mailto:{DEVELOPER_EMAIL}" class="email-link">{DEVELOPER_EMAIL}</a>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown(f"""
+        <a href="mailto:{DEVELOPER_EMAIL}?subject=Heart Disease App Feedback" target="_blank" style="text-decoration: none;">
+            <div style="background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); color: white; padding: 0.8rem; border-radius: 10px; text-align: center; font-weight: 600; margin-top: 0.5rem;">
+                ✉️ ส่งอีเมล
+            </div>
+        </a>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.warning("- ผลลัพธ์เป็นการประเมินเบื้องต้น\n- ควรปรึกษาแพทย์เพื่อการวินิจฉัยที่ถูกต้อง")
+    
+    st.markdown("---")
+    st.markdown(f"<div style='text-align: center; color: #bdc3c7; font-size: 0.85rem;'>Made with ❤️ by <strong>{DEVELOPER_NAME}</strong><br>© 2026</div>", unsafe_allow_html=True)
+
+# ==================== Main Content ====================
+st.markdown('<p class="main-title">🫀 ระบบทำนายความเสี่ยงโรคหัวใจ</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Heart Disease Risk Prediction using Decision Tree ML Model</p>', unsafe_allow_html=True)
+
+st.markdown("### 📝 กรุณากรอกข้อมูลสุขภาพ")
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown("#### 👤 ข้อมูลพื้นฐาน")
+    age = st.number_input("🎂 อายุ (Age)", min_value=18, max_value=100, value=55, step=1)
+    bmi = st.number_input("⚖️ ดัชนีมวลกาย (BMI)", min_value=10.0, max_value=50.0, value=25.0, step=0.1)
+    
+    sex = st.selectbox("⚧ เพศ (Sex)", options=["Male", "Female"])
+    smoking_status = st.selectbox("🚬 สถานะการสูบบุหรี่", options=["Never", "Former", "Current"])
+    exercise_level = st.selectbox("🏃 ระดับการออกกำลังกาย", options=["Low", "Moderate", "High"])
+    
+    systolic_bp = st.number_input("💉 ความดันโลหิตตัวบน (Systolic BP) [mm Hg]", min_value=80, max_value=250, value=120, step=1)
+    diastolic_bp = st.number_input("💉 ความดันโลหิตตัวล่าง (Diastolic BP) [mm Hg]", min_value=40, max_value=150, value=80, step=1)
 
 with col2:
-    st.markdown("##### 📟 เครื่องตรวจคลื่นไฟฟ้าหัวใจ (Simulated ECG)")
-    # สร้างเส้น ECG จำลอง
-    bpm = input_data['max_heart_rate']
-    duration = 4 # วินาที
-    t = np.linspace(0, duration, 400)
-    freq = bpm / 60.0
-    signal = np.zeros_like(t)
+    st.markdown("#### 🏥 ผลการตรวจและประวัติ")
+    cholesterol = st.number_input("🩸 คอเลสเตอรอล (Cholesterol) [mg/dl]", min_value=100, max_value=600, value=200, step=1)
+    fasting_blood_sugar = st.number_input("🍬 น้ำตาลในเลือดขณะอดอาหาร [mg/dl]", min_value=50, max_value=300, value=100, step=1)
+    max_heart_rate = st.number_input("💓 อัตราการเต้นหัวใจสูงสุด (Max HR) [bpm]", min_value=60, max_value=220, value=150, step=1)
     
-    # สร้างคลื่น P, QRS, T จำลอง
-    for i in range(int(freq * duration) + 1):
-        peak_time = i / freq + 0.2
-        signal += 1.2 * np.exp(-600 * (t - peak_time)**2)  # QRS (หัวใจบีบตัว)
-        signal += 0.25 * np.exp(-80 * (t - peak_time - 0.15)**2) # T wave
-        signal += 0.15 * np.exp(-80 * (t - peak_time + 0.1)**2)  # P wave
+    diabetes = st.selectbox("🩸 เป็นเบาหวานหรือไม่", options=["FALSE", "TRUE"])
+    family_history = st.selectbox("🧬 มีประวัติครอบครัวเป็นโรคหัวใจ", options=["FALSE", "TRUE"])
+    chest_pain_type = st.selectbox("💔 ประเภทอาการเจ็บหน้าอก", options=["Typical Angina", "Atypical Angina", "Non-anginal Pain", "Asymptomatic"])
+    ecg_result = st.selectbox("📈 ผล ECG", options=["Normal", "ST-T Abnormality", "Left Ventricular Hypertrophy"])
 
-    fig_ecg = go.Figure()
-    fig_ecg.add_trace(go.Scatter(x=t, y=signal, mode='lines', line=dict(color=ecg_color, width=2.5), name='ECG'))
-    fig_ecg.update_layout(
-        plot_bgcolor='rgba(0,0,0,0.8)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        xaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', showticklabels=False, zeroline=False),
-        yaxis=dict(showgrid=True, gridcolor='rgba(255,255,255,0.1)', showticklabels=False, zeroline=False, range=[-0.5, 1.5]),
-        height=220,
-        margin=dict(l=0, r=0, t=0, b=0),
-        annotations=[dict(x=0.02, y=1.3, xref='paper', yref='paper', text=f"HR: {bpm} BPM", showarrow=False, font=dict(color=ecg_color, size=16, family="monospace"))]
-    )
-    st.plotly_chart(fig_ecg, use_container_width=True)
-
-# ========== Decision Path (อธิบายเหตุผล) ==========
+# ==================== Prediction Button ====================
 st.markdown("---")
-st.markdown("### 🛤️ ทำไมโมเดลถึงตัดสินแบบนี้? (Decision Path)")
-st.markdown("ต้นไม้ตัดสินใจตรวจสอบเงื่อนไขทีละขั้น ดังนี้:")
+predict_col1, predict_col2, predict_col3 = st.columns([1, 2, 1])
+with predict_col2:
+    predict_clicked = st.button("🔮 ทำนายผล (Predict)", use_container_width=True, type="primary")
 
-node_indicator = model.decision_path(input_df)
-feature_arr = model.tree_.feature
-threshold_arr = model.tree_.threshold
-node_index = node_indicator.indices[node_indicator.nonzero()]
-
-path_cols = st.columns(len(node_index))
-for i, node_id in enumerate(node_index):
-    with path_cols[i]:
-        if node_id == node_index[-1]:
-            st.markdown(f"""
-            <div style="background:{ecg_color}; color:white; padding:15px; border-radius:10px; text-align:center; height:100%;">
-                <b>🎯 สรุปผล</b><br>
-                {'ความเสี่ยงสูง' if prediction == 1 else 'ความเสี่ยงต่ำ'}
-            </div>
-            """, unsafe_allow_html=True)
-        else:
-            feature_name = feature_cols[feature_arr[node_id]].replace('_', ' ').title()
-            threshold = threshold_arr[node_id]
-            value = input_df[feature_name.replace(' ', '_').lower()].values[0] # Hack to match col name
+# ==================== Prediction Result ====================
+if predict_clicked:
+    # สร้าง DataFrame จากข้อมูลที่ผู้ใช้กรอก
+    input_dict = {
+        'age': age, 'bmi': bmi, 'systolic_bp': systolic_bp, 'diastolic_bp': diastolic_bp,
+        'cholesterol_mg_dl': cholesterol, 'fasting_blood_sugar': fasting_blood_sugar,
+        'max_heart_rate': max_heart_rate, 'sex': sex, 'smoking_status': smoking_status,
+        'exercise_level': exercise_level, 'diabetes': diabetes, 'family_history': family_history,
+        'chest_pain_type': chest_pain_type, 'ecg_result': ecg_result
+    }
+    input_df = pd.DataFrame([input_dict])
+    
+    # Encode ข้อมูลให้ตรงกับตอนฝึกโมเดล
+    for col in categorical_cols:
+        # ถ้ามีค่าที่ไม่เคยเห็นตอนฝึก ให้ใช้ค่าแรกสุดแทน (ป้องกัน Error)
+        try:
+            input_df[col] = encoders[col].transform(input_df[col].astype(str))
+        except ValueError:
+            input_df[col] = 0 
             
-            # Find original col name
-            orig_col = [c for c in feature_cols if c.replace('_',' ').title() == feature_name][0]
-            val = input_encoded[orig_col]
-            
-            if val <= threshold:
-                st.markdown(f"""
-                <div style="background:#e3f2fd; padding:15px; border-radius:10px; border-left:4px solid #2196f3; height:100%;">
-                    <b>ขั้นที่ {i+1}</b><br>
-                    <code>{feature_name} ≤ {threshold:.1f}</code><br>
-                    <span style="color:#666; font-size:0.9em;">(ค่าของคุณ: {val})</span> ✅
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div style="background:#ffebee; padding:15px; border-radius:10px; border-left:4px solid #f44336; height:100%;">
-                    <b>ขั้นที่ {i+1}</b><br>
-                    <code>{feature_name} > {threshold:.1f}</code><br>
-                    <span style="color:#666; font-size:0.9em;">(ค่าของคุณ: {val})</span> ❌
-                </div>
-                """, unsafe_allow_html=True)
-
-# ========== ส่วนแสดงผลประสิทธิภาพโมเดล (ซ่อนใน Expander เพื่อให้หน้าจอดูสะอาด) ==========
-with st.expander("📊 ดูประสิทธิภาพเชิงเทคนิคของโมเดล (สำหรับ Developer/Data Scientist)"):
-    st.markdown("#### 1. Model Metrics")
-    y_pred = model.predict(X_test)
-    y_pred_proba = model.predict_proba(X_test)[:, 1]
+    # ทำนายผล
+    prediction = model.predict(input_df)[0]
+    probability = model.predict_proba(input_df)[0]
     
-    m_col1, m_col2, m_col3 = st.columns(3)
-    m_col1.metric("Accuracy", f"{accuracy_score(y_test, y_pred):.2%}")
-    m_col2.metric("AUC-ROC", f"{auc(roc_curve(y_test, y_pred_proba)[0], roc_curve(y_test, y_pred_proba)[1]):.2%}")
+    st.markdown("---")
+    st.markdown("### 🎯 ผลการทำนาย")
     
-    st.markdown("#### 2. Confusion Matrix & ROC Curve")
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    if prediction == 1:
+        risk_prob = probability[1] * 100
+        st.markdown(f'<div class="result-danger">⚠️ <strong>มีความเสี่ยงเป็นโรคหัวใจ</strong><br><span style="font-size: 2rem;">ความน่าจะเป็น: {risk_prob:.1f}%</span></div>', unsafe_allow_html=True)
+    else:
+        safe_prob = probability[0] * 100
+        st.markdown(f'<div class="result-safe">✅ <strong>ไม่พบความเสี่ยงโรคหัวใจ</strong><br><span style="font-size: 2rem;">ความน่าจะเป็น: {safe_prob:.1f}%</span></div>', unsafe_allow_html=True)
     
-    # Confusion Matrix
-    cm = confusion_matrix(y_test, y_pred)
-    im = ax1.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
-    ax1.set_title('Confusion Matrix')
-    ax1.set_xticks([0, 1]); ax1.set_yticks([0, 1])
-    ax1.set_xticklabels(['No Disease', 'Disease']); ax1.set_yticklabels(['No Disease', 'Disease'])
-    thresh = cm.max() / 2.
-    for i in range(cm.shape[0]):
-        for j in range(cm.shape[1]):
-            ax1.text(j, i, format(cm[i, j], 'd'), ha="center", va="center", color="white" if cm[i, j] > thresh else "black")
-
-    # ROC Curve
-    fpr, tpr, _ = roc_curve(y_test, y_pred_proba)
-    ax2.plot(fpr, tpr, color='#56ab2f', lw=2, label=f'ROC curve (AUC = {auc(fpr, tpr):.2f})')
-    ax2.plot([0, 1], [0, 1], color='red', lw=2, linestyle='--')
-    ax2.set_title('ROC Curve')
-    ax2.set_xlabel('False Positive Rate')
-    ax2.set_ylabel('True Positive Rate')
-    ax2.legend(loc="lower right")
+    # Gauge Chart
+    st.markdown("#### 📊 Probability Distribution")
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=probability[1] * 100,
+        title={'text': "ความเสี่ยงโรคหัวใจ (%)", 'font': {'size': 24}},
+        gauge={
+            'axis': {'range': [0, 100]},
+            'bar': {'color': "darkblue"},
+            'steps': [
+                {'range': [0, 30], 'color': '#38ef7d'},
+                {'range': [30, 60], 'color': '#f39c12'},
+                {'range': [60, 100], 'color': '#eb3349'}
+            ],
+        }
+    ))
+    fig.update_layout(height=300)
+    st.plotly_chart(fig, use_container_width=True)
     
-    st.pyplot(fig)
+    with st.expander("📋 ดูข้อมูลที่คุณกรอก", expanded=False):
+        st.dataframe(input_df, use_container_width=True)
+    
+    with st.expander("🔍 Feature Importance", expanded=False):
+        importances = model.feature_importances_
+        feature_imp_df = pd.DataFrame({'Feature': feature_cols, 'Importance': importances}).sort_values('Importance', ascending=False)
+        
+        fig_imp = go.Figure(data=[go.Bar(x=feature_imp_df['Feature'], y=feature_imp_df['Importance'], marker_color='rgb(102, 126, 234)')])
+        fig_imp.update_layout(title='Feature Importance', xaxis_title='Features', yaxis_title='Importance', height=400)
+        st.plotly_chart(fig_imp, use_container_width=True)
 
-    st.markdown("#### 3. โครงสร้าง Decision Tree เต็มรูปแบบ")
-    fig_tree, ax_tree = plt.subplots(figsize=(20, 10))
-    plot_tree(model, feature_names=feature_cols, class_names=['No Disease', 'Disease'], filled=True, rounded=True, fontsize=9, ax=ax_tree)
-    st.pyplot(fig_tree)
-
+# ==================== Footer ====================
 st.markdown("---")
-st.caption("🌳 Decision Tree Heart Disease Predictor | Machine Learning Explorer")
+st.markdown(f"""
+    <div style='text-align: center; color: #7f8c8d; padding: 1rem;'>
+        <p style='font-size: 0.9rem;'>⚕️ <strong>คำเตือน:</strong> ผลลัพธ์จากการทำนายเป็นเพียงการประเมินเบื้องต้น ไม่สามารถใช้แทนการวินิจฉัยจากแพทย์ได้</p>
+        <p style='font-size: 0.85rem; margin-top: 1rem;'>📧 ติดต่อผู้พัฒนา: <a href="mailto:{DEVELOPER_EMAIL}" style="color: #3498db;">{DEVELOPER_EMAIL}</a></p>
+        <p style='font-size: 0.8rem; margin-top: 0.5rem;'>© 2026 {DEVELOPER_NAME}</p>
+    </div>
+""", unsafe_allow_html=True)
