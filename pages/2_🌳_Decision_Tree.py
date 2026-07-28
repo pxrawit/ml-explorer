@@ -97,13 +97,6 @@ except Exception as e:
 
 # ==================== Sidebar ====================
 with st.sidebar:
-    st.markdown(f"""
-        <div class="dev-profile">
-            <div style="font-size: 3rem;">👨‍💻</div>
-            <div class="dev-name">{DEVELOPER_NAME}</div>
-        </div>
-    """, unsafe_allow_html=True)
-    
     st.markdown("---")
     st.markdown("### 📊 โมเดล Information")
     st.info(f"""
