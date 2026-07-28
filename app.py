@@ -131,9 +131,13 @@ with col_info:
         <p class="profile-name">👨‍🎓 {STUDENT_NAME}</p>
         <p class="profile-info">🆔 รหัสนักศึกษา: <b>{STUDENT_ID}</b></p>
         <p class="profile-info">🏫 {STUDENT_SECTION} | สาขา{STUDENT_PROGRAM}</p>
+        <p class="profile-info">📚 {STUDENT_YEAR}</p>
     </div>
     """, unsafe_allow_html=True)
 
+
+
+st.markdown("---")
 
 # ========== 🎯 เลือกโมเดล ==========
 st.markdown("## 🎯 เลือกโมเดลที่ต้องการเรียนรู้")
@@ -163,3 +167,14 @@ for i, (icon, name, full_name, desc) in enumerate(models_info):
 st.markdown("👈 **เลือกโมเดลจากเมนูด้านซ้ายมือเพื่อเริ่มเรียนรู้**")
 
 st.markdown("---")
+
+
+# ========== Footer ==========
+st.markdown("---")
+st.markdown(f"""
+<div style="text-align:center; color:#888; padding:20px;">
+    <p>🤖 <b>ML Models Explorer</b> | โปรเจกต์วิชา Machine Learning</p>
+    <p>จัดทำโดย <b>{STUDENT_NAME}</b> | {STUDENT_SECTION} | {STUDENT_PROGRAM}</p>
+    <p>© {datetime.now().year} | Made with ❤️ using Streamlit + scikit-learn</p>
+</div>
+""", unsafe_allow_html=True)
