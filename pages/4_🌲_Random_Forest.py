@@ -45,18 +45,28 @@ def load_and_prep_data():
         st.error("ไม่พบไฟล์ mall_sales_eda_3000_records.xlsx")
         st.stop()
     
-    # แปลง Boolean เป็น int
-    df['is_weekend'] = df['is_weekend'].astype(int)
-    df['returned'] = df['returned'].astype(int)
+    # ตัดคอลัมน์ที่ไม่จำเป็นออก (ID, Date, Target Leakage, EDA columns)
+    cols_to_drop = ['record_id', 'sale_date', 'sales_amount', 'cost_amount', 
+                    'gross_profit', 'branch_a_outlier', 'special_high_sales_day']
+    df = df.drop(columns=[col for col in cols_to_drop if col in df.columns])
+    
+    # แปลง Boolean columns เป็น int
+    bool_cols = ['is_weekend', 'returned']
+    for col in bool_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str).map({'TRUE': 1, 'FALSE': 0, True: 1, False: 0}).fillna(0).astype(int)
     
     # One-Hot Encoding สำหรับ Categorical variables
     categorical_cols = ['day_of_week', 'branch', 'category', 'campaign', 'payment_method']
-    df_encoded = pd.get_dummies(df, columns=categorical_cols, drop_first=False)
+    df = pd.get_dummies(df, columns=categorical_cols, drop_first=False)
+    
+    # บังคับให้ทุกคอลัมน์เป็น numeric
+    df = df.apply(pd.to_numeric, errors='coerce').fillna(0)
     
     # กำหนด Target และ Features
     target = 'sales_amount'
-    X = df_encoded.drop(columns=[target])
-    y = df_encoded[target]
+    X = df.drop(columns=[target])
+    y = df[target]
     
     # Train/Test Split
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
@@ -74,12 +84,6 @@ def train_rf_model(X_tr, y_tr):
 
 model = train_rf_model(X_train, y_train)
 
-# ประเมินผลโมเดล
-y_pred = model.predict(X_test)
-r2 = r2_score(y_test, y_pred)
-rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-mae = mean_absolute_error(y_test, y_pred)
-
 # ================= 3. Sidebar: กรอกข้อมูลสำหรับทำนาย =================
 st.sidebar.markdown("### 📝 กรอกข้อมูลเพื่อทำนายยอดขาย")
 st.sidebar.markdown("---")
@@ -95,13 +99,16 @@ satisfaction_score = st.sidebar.number_input("คะแนนความพึ�
 
 # ข้อมูลเชิงหมวดหมู่
 st.sidebar.markdown("#### 🏷️ ข้อมูลเชิงหมวดหมู่")
-# ดึงค่า unique จากข้อมูลต้นฉบับเพื่อใช้สร้าง Dropdown
-day_of_week = st.sidebar.selectbox("วันในสัปดาห์ (day_of_week)", df['day_of_week'].unique())
-branch = st.sidebar.selectbox("สาขา (branch)", df['branch'].unique())
-category = st.sidebar.selectbox("หมวดหมู่สินค้า (category)", df['category'].unique())
-campaign = st.sidebar.selectbox("แคมเปญ (campaign)", df['campaign'].unique())
-payment_method = st.sidebar.selectbox("วิธีการชำระเงิน (payment_method)", df['payment_method'].unique())
-is_weekend = st.sidebar.selectbox("เป็นวันหยุดสุดสัปดาห์ (is_weekend)", [True, False])
+day_of_week = st.sidebar.selectbox("วันในสัปดาห์ (day_of_week)", 
+                                    ['จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์', 'อาทิตย์'])
+branch = st.sidebar.selectbox("สาขา (branch)", ['A', 'B', 'C', 'D', 'E'])
+category = st.sidebar.selectbox("หมวดหมู่สินค้า (category)", 
+                                 ['Electronics', 'Fashion', 'Food & Beverage', 'Home & Living', 'Beauty', 'Sports'])
+campaign = st.sidebar.selectbox("แคมเปญ (campaign)", 
+                                 ['None', 'Weekend Boost', 'Member Day', 'Payday Promo', 'Clearance Sale', 'Mega Sale'])
+payment_method = st.sidebar.selectbox("วิธีการชำระเงิน (payment_method)", 
+                                       ['Credit Card', 'Cash', 'QR Payment', 'Mobile Banking', 'E-Wallet'])
+is_weekend = st.sidebar.selectbox("เป็นวันหยุดสุดสัปดาห์ (is_weekend)", [False, True])
 returned = st.sidebar.selectbox("มีการคืนสินค้า (returned)", [False, True])
 
 # ================= 4. ปุ่มทำนายผล =================
@@ -126,14 +133,17 @@ if st.button("🔮 ทำนายยอดขาย (Predict Sales Amount)", ty
     }
     input_df = pd.DataFrame(user_data)
     
-    # One-Hot Encoding ข้อมูล input ให้ตรงกับโครงสร้างของ X_train
-    input_encoded = pd.get_dummies(input_df, columns=['day_of_week', 'branch', 'category', 'campaign', 'payment_method'])
+    # One-Hot Encoding ข้อมูล input
+    input_df = pd.get_dummies(input_df, columns=['day_of_week', 'branch', 'category', 'campaign', 'payment_method'])
     
-    # จัดเรียงคอลัมน์ให้ตรงกับ X_train และเติม 0 สำหรับคอลัมน์ที่หายไปใน input
-    input_encoded = input_encoded.reindex(columns=X_train.columns, fill_value=0)
+    # บังคับเป็น numeric
+    input_df = input_df.apply(pd.to_numeric, errors='coerce').fillna(0)
+    
+    # จัดเรียงคอลัมน์ให้ตรงกับ X_train และเติม 0 สำหรับคอลัมน์ที่หายไป
+    input_df = input_df.reindex(columns=X_train.columns, fill_value=0)
     
     # ทำนายผล
-    prediction = model.predict(input_encoded)[0]
+    prediction = model.predict(input_df)[0]
     
     # แสดงผลลัพธ์
     st.success(f"### 💰 ยอดขายที่คาดการณ์ไว้: **{prediction:,.2f} บาท**")
@@ -144,12 +154,11 @@ if st.button("🔮 ทำนายยอดขาย (Predict Sales Amount)", ty
     st.markdown("### 🏆 ความสำคัญของปัจจัย (Feature Importance)")
     st.markdown("ปัจจัยใดที่มีผลต่อยอดขายมากที่สุดตามมุมมองของ Random Forest")
     
-    # รวบรวม importance และจับคู่กับชื่อ feature
-    feature_names = X_train.columns.tolist()
+    importances = model.feature_importances_
     importance_df = pd.DataFrame({
-        'Feature': feature_names,
-        'Importance': model.feature_importances_
-    }).sort_values('Importance', ascending=False).head(10) # Top 10
+        'Feature': X_train.columns,
+        'Importance': importances
+    }).sort_values('Importance', ascending=False).head(10)
     
     fig_imp = px.bar(
         importance_df, 
@@ -164,20 +173,17 @@ if st.button("🔮 ทำนายยอดขาย (Predict Sales Amount)", ty
     fig_imp.update_layout(height=400, showlegend=False)
     st.plotly_chart(fig_imp, use_container_width=True)
 
-    # ================= 6. Actual vs Predicted (Sample) =================
+    # ================= 6. Actual vs Predicted =================
     st.markdown("### 📊 เปรียบเทียบยอดขายจริง vs ที่ทำนาย (สุ่มตัวอย่าง 200 รายการ)")
     
-    # สุ่มตัวอย่างจากชุดทดสอบ
     sample_size = min(200, len(X_test))
     sample_idx = np.random.choice(len(X_test), size=sample_size, replace=False)
     
     fig_scatter = px.scatter(
         x=y_test.iloc[sample_idx],
-        y=y_pred[sample_idx],
+        y=model.predict(X_test.iloc[sample_idx]),
         labels={'x': 'ยอดขายจริง (Actual)', 'y': 'ยอดขายที่ทำนาย (Predicted)'},
-        opacity=0.7,
-        trendline="ols",
-        trendline_color_override="red"
+        opacity=0.7
     )
     fig_scatter.update_layout(height=400)
     st.plotly_chart(fig_scatter, use_container_width=True)
@@ -187,13 +193,13 @@ if st.button("🔮 ทำนายยอดขาย (Predict Sales Amount)", ty
     col1, col2, col3 = st.columns(3)
     with col1:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("R² Score", f"{r2:.4f}", help="ยิ่งใกล้ 1 แสดงว่าโมเดลอธิบายความแปรปรวนของข้อมูลได้ดี")
+        st.metric("R² Score", f"{r2_score(y_test, model.predict(X_test)):.4f}")
         st.markdown('</div>', unsafe_allow_html=True)
     with col2:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("RMSE", f"{rmse:,.2f}", help="Root Mean Squared Error (ค่าคลาดเคลื่อนกำลังสองเฉลี่ยราก)")
+        st.metric("RMSE", f"{np.sqrt(mean_squared_error(y_test, model.predict(X_test))):,.2f}")
         st.markdown('</div>', unsafe_allow_html=True)
     with col3:
         st.markdown('<div class="metric-card">', unsafe_allow_html=True)
-        st.metric("MAE", f"{mae:,.2f}", help="Mean Absolute Error (ค่าคลาดเคลื่อนสัมบูรณ์เฉลี่ย)")
+        st.metric("MAE", f"{mean_absolute_error(y_test, model.predict(X_test)):,.2f}")
         st.markdown('</div>', unsafe_allow_html=True)
