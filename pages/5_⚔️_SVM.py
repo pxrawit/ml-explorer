@@ -13,7 +13,7 @@ import plotly.graph_objects as go
 from sklearn.svm import SVC
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.metrics import accuracy_score, classification_report
 
 st.set_page_config(
     page_title="🧠 Teen Depression Predictor",
@@ -60,31 +60,35 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-
 # ==================== Load & Prepare Data ====================
 @st.cache_data
 def load_and_prepare_data():
     try:
-        # ลองอ่านไฟล์โดยไม่มี header ก่อน เพราะข้อมูลตัวอย่างที่ให้เป็น raw data
-        df = pd.read_csv("Teen_Mental_Health_Dataset.csv", header=None)
+        # กำหนดชื่อคอลัมน์ตามลำดับข้อมูลจริงในไฟล์ (ไฟล์ไม่มี header row)
+        column_names = [
+            'age', 'gender', 'daily_social_media_hours', 'platform_usage', 
+            'sleep_hours', 'screen_time_before_sleep', 'academic_performance', 
+            'physical_activity', 'social_interaction_level', 'stress_level', 
+            'anxiety_level', 'addiction_level', 'depression'
+        ]
         
-        # ตรวจสอบว่าแถวแรกเป็นข้อมูลหรือไม่ (ถ้าใช่ ให้กำหนดชื่อคอลัมน์)
-        if str(df.iloc[0, 0]).isdigit() or str(df.iloc[0, 0]) in ['13', '14', '15', '16', '17', '18', '19']:
-            df.columns = [
-                'age', 'gender', 'daily_social_media_hours', 'platform_usage', 
-                'sleep_hours', 'screen_time_before_sleep', 'academic_performance', 
-                'physical_activity', 'social_interaction_level', 'stress_level', 
-                'anxiety_level', 'addiction_level', 'depression'
-            ]
-            
-        # แปลงประเภทข้อมูล
+        # อ่านไฟล์โดยระบุ header=None และใส่ names ที่กำหนดไว้
+        df = pd.read_csv("Teen_Mental_Health_Dataset.csv", header=None, names=column_names)
+        
+        # แปลงประเภทข้อมูลให้เป็นตัวเลข (จัดการกรณีที่มีค่าแปลกปลอม)
         df['age'] = pd.to_numeric(df['age'], errors='coerce')
         df['depression'] = pd.to_numeric(df['depression'], errors='coerce')
-        df = df.dropna() # ลบแถวที่มีค่าว่าง
+        
+        # ลบแถวที่มีค่าว่าง (NaN) ออก
+        df = df.dropna()
         
         return df
+    except FileNotFoundError:
+        st.error("❌ ไม่พบไฟล์ 'Teen_Mental_Health_Dataset.csv'")
+        st.info("💡 กรุณาวางไฟล์ CSV ไว้ในโฟลเดอร์เดียวกันกับ app.py")
+        return None
     except Exception as e:
-        st.error(f"❌ ไม่สามารถโหลดไฟล์ Teen_Mental_Health_Dataset.csv ได้: {e}")
+        st.error(f"❌ เกิดข้อผิดพลาดในการโหลดข้อมูล: {e}")
         return None
 
 df = load_and_prepare_data()
@@ -98,7 +102,6 @@ X = df.drop(columns=[target])
 y = df[target]
 
 categorical_cols = ['gender', 'platform_usage', 'social_interaction_level']
-numerical_cols = [col for col in X.columns if col not in categorical_cols]
 
 # Encode Categorical
 label_encoders = {}
@@ -112,7 +115,7 @@ for col in categorical_cols:
 scaler = StandardScaler()
 X_scaled = scaler.fit_transform(X_encoded)
 
-# Train/Test Split (สำหรับแสดง Metrics)
+# Train/Test Split
 X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
 
 # ==================== Train Model ====================
@@ -136,7 +139,7 @@ with st.sidebar:
     st.markdown("**🔧 Algorithm:** SVM (Support Vector Machine)")
     st.markdown("**⚙️ Kernel:** RBF")
     st.markdown(f"**🎯 Accuracy:** {acc:.2%}")
-    st.markdown(f"**📝 Features:** {len(numerical_cols) + len(categorical_cols)}")
+    st.markdown(f"**📝 Features:** {len(X.columns)}")
     st.markdown(f"**📊 Dataset Size:** {len(df)} records")
     
     st.markdown("---")
@@ -199,7 +202,6 @@ with tab1:
         input_processed = input_data.copy()
         for col, le in label_encoders.items():
             if col in input_processed.columns:
-                # ใช้ try-except เพื่อป้องกันกรณีค่าที่ไม่เคยเห็นตอน train
                 try:
                     input_processed[col] = le.transform(input_processed[col].astype(str))
                 except ValueError:
@@ -286,24 +288,26 @@ with tab1:
 # ====================== TAB 2: Batch Prediction ======================
 with tab2:
     st.markdown("### 📊 อัปโหลดไฟล์ CSV เพื่อทำนายหลายราย")
-
-    st.markdown("""
-    **รูปแบบ CSV ที่ต้องมีคอลัมน์ (ตามลำดับหรือมี Header ตรงกัน):**
-    `age, gender, daily_social_media_hours, platform_usage, sleep_hours, screen_time_before_sleep, academic_performance, physical_activity, social_interaction_level, stress_level, anxiety_level, addiction_level`
-    """)
+    st.markdown("⚠️ หมายเหตุ: ไฟล์ที่อัปโหลดต้องมีลำดับคอลัมน์ตรงกับข้อมูลต้นฉบับ (ไม่มี Header row)")
 
     uploaded_file = st.file_uploader("📁 เลือกไฟล์ CSV", type=["csv"])
 
     if uploaded_file is not None:
-        batch_df = pd.read_csv(uploaded_file)
-        st.markdown("#### 📋 ตัวอย่างข้อมูลที่อัปโหลด")
-        st.dataframe(batch_df.head(), use_container_width=True)
+        try:
+            column_names = [
+                'age', 'gender', 'daily_social_media_hours', 'platform_usage', 
+                'sleep_hours', 'screen_time_before_sleep', 'academic_performance', 
+                'physical_activity', 'social_interaction_level', 'stress_level', 
+                'anxiety_level', 'addiction_level', 'depression'
+            ]
+            batch_df = pd.read_csv(uploaded_file, header=None, names=column_names)
+            
+            st.markdown("#### 📋 ตัวอย่างข้อมูลที่อัปโหลด")
+            st.dataframe(batch_df.head(), use_container_width=True)
 
-        if st.button("🔮 ทำนายทั้งหมด", type="primary"):
-            try:
-                batch_processed = batch_df.copy()
+            if st.button("🔮 ทำนายทั้งหมด", type="primary"):
+                batch_processed = batch_df.drop(columns=['depression']).copy()
                 
-                # Ensure columns match
                 for col in categorical_cols:
                     if col in batch_processed.columns:
                         try:
@@ -311,14 +315,7 @@ with tab2:
                         except ValueError:
                             batch_processed[col] = 0
                 
-                # Fill missing columns with 0 if any
-                for col in X_encoded.columns:
-                    if col not in batch_processed.columns:
-                        batch_processed[col] = 0
-                        
-                batch_processed = batch_processed[X_encoded.columns]
                 batch_scaled = scaler.transform(batch_processed)
-                
                 predictions = model.predict(batch_scaled)
                 probabilities = model.predict_proba(batch_scaled)
 
@@ -349,34 +346,20 @@ with tab2:
                     file_name="teen_mental_health_predictions.csv",
                     mime="text/csv",
                 )
-
-            except Exception as e:
-                st.error(f"❌ เกิดข้อผิดพลาด: {e}")
-                st.exception(e)
+        except Exception as e:
+            st.error(f"❌ เกิดข้อผิดพลาด: {e}")
 
 # ====================== TAB 3: About Model ======================
 with tab3:
     st.markdown("### ℹ️ เกี่ยวกับโมเดล")
-
     st.markdown("""
     #### 🧠 โมเดล SVM (Support Vector Machine)
-
     **SVM** คืออัลกอริทึม Machine Learning ที่ใช้สำหรับ Binary Classification
     โดยค้นหา Hyperplane ที่แบ่งกลุ่มข้อมูลได้ดีที่สุด เหมาะสำหรับการแยกแยะรูปแบบที่ซับซ้อนในข้อมูลสุขภาพจิต
 
     #### 🎯 Target Variable
     - **0** = ไม่มีความเสี่ยงภาวะซึมเศร้า (No Depression)
     - **1** = มีความเสี่ยงภาวะซึมเศร้า (Depression)
-
-    #### ⚙️ กระบวนการทำงาน
-
-    | ขั้นตอน | รายละเอียด |
-    |---------|------------|
-    | 1. Data Loading | โหลดข้อมูล CSV |
-    | 2. Preprocessing | Encode categorical (เช่น เพศ, แพลตฟอร์ม), Scale numerical |
-    | 3. Train/Test Split | แบ่งข้อมูล 80/20 |
-    | 4. Training | เทรน SVM ด้วย Kernel RBF |
-    | 5. Evaluation | Accuracy, Classification Report |
     """)
 
     st.markdown("#### 📊 Classification Report (จากชุดข้อมูลทดสอบ)")
