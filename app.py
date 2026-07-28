@@ -134,8 +134,6 @@ with col_info:
         <p class="profile-info">🆔 รหัสนักศึกษา: <b>{STUDENT_ID}</b></p>
         <p class="profile-info">🏫 {STUDENT_SECTION} | สาขา{STUDENT_PROGRAM}</p>
         <p class="profile-info">📚 {STUDENT_YEAR}</p>
-        <p class="profile-info">📧 {STUDENT_EMAIL}</p>
-        <p class="profile-info">💻 {STUDENT_GITHUB}</p>
         <div style="margin-top:15px;">
             <span class="profile-badge">🤖 Machine Learning</span>
             <span class="profile-badge">🐍 Python</span>
