@@ -89,14 +89,23 @@ if len(selected_features) < 2:
     st.warning("⚠️ กรุณาเลือกอย่างน้อย 2 features")
     st.stop()
 
-# เลือก 2 features สำหรับ visualization
+# เลือก 2 features สำหรับ visualization (ป้องกัน duplicate)
 st.sidebar.markdown("---")
 st.sidebar.markdown("**📊 Visualization (2D)**")
+
 col1_viz = st.sidebar.selectbox("แกน X", selected_features, index=0)
-col2_viz = st.sidebar.selectbox("แกน Y", selected_features, index=min(1, len(selected_features)-1))
+
+# สร้างรายการสำหรับแกน Y โดยตัด col1_viz ออก
+available_features_for_y = [f for f in selected_features if f != col1_viz]
+
+if len(available_features_for_y) == 0:
+    st.sidebar.error("❌ ต้องมีอย่างน้อย 2 features ที่แตกต่างกัน")
+    st.stop()
+
+col2_viz = st.sidebar.selectbox("แกน Y", available_features_for_y, index=0)
 
 # ================= Preprocessing =================
-df_clean = df_raw[selected_features].dropna()
+df_clean = df_clean = df_raw[selected_features].dropna()
 
 if len(df_clean) == 0:
     st.error("❌ ไม่มีข้อมูลที่ใช้งานได้ (อาจมีค่า NaN ทั้งหมด)")
@@ -141,10 +150,15 @@ with c4:
 # ================= 2D Visualization =================
 st.markdown("### 🎨 Visualization (2D)")
 
-# สร้าง DataFrame สำหรับ plotting
+# ตรวจสอบว่าเลือก feature ต่างกัน (ป้องกัน duplicate error)
+if col1_viz == col2_viz:
+    st.warning("⚠️ กรุณาเลือก Feature สำหรับแกน X และ Y ที่แตกต่างกัน")
+    st.stop()
+
+# สร้าง DataFrame สำหรับ plotting (rename เพื่อป้องกัน duplicate)
 df_plot = df_clean[[col1_viz, col2_viz]].copy()
-df_plot['Cluster'] = labels.astype(str)
-df_plot['Cluster'] = 'Cluster ' + df_plot['Cluster']
+df_plot.columns = [col1_viz, col2_viz]  # ensure unique column names
+df_plot['Cluster'] = 'Cluster ' + labels.astype(str)
 
 fig = px.scatter(
     df_plot, 
@@ -152,8 +166,7 @@ fig = px.scatter(
     y=col2_viz, 
     color='Cluster',
     title=f'K-Means Clustering (K={k_value})',
-    color_discrete_sequence=px.colors.qualitative.Plotly,
-    hover_data=[col1_viz, col2_viz]
+    color_discrete_sequence=px.colors.qualitative.Plotly
 )
 
 # เพิ่ม centroids
