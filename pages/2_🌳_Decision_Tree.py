@@ -113,29 +113,6 @@ with st.sidebar:
     **Dataset:** 2,000 Records
     """)
     
-    st.markdown("---")
-    st.markdown("### 📧 ติดต่อผู้พัฒนา")
-    st.markdown(f"""
-        <div class="email-card">
-            <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">✉️</div>
-            <a href="mailto:{DEVELOPER_EMAIL}" class="email-link">{DEVELOPER_EMAIL}</a>
-        </div>
-    """, unsafe_allow_html=True)
-    
-    st.markdown(f"""
-        <a href="mailto:{DEVELOPER_EMAIL}?subject=Heart Disease App Feedback" target="_blank" style="text-decoration: none;">
-            <div style="background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); color: white; padding: 0.8rem; border-radius: 10px; text-align: center; font-weight: 600; margin-top: 0.5rem;">
-                ✉️ ส่งอีเมล
-            </div>
-        </a>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("---")
-    st.warning("- ผลลัพธ์เป็นการประเมินเบื้องต้น\n- ควรปรึกษาแพทย์เพื่อการวินิจฉัยที่ถูกต้อง")
-    
-    st.markdown("---")
-    st.markdown(f"<div style='text-align: center; color: #bdc3c7; font-size: 0.85rem;'>Made with ❤️ by <strong>{DEVELOPER_NAME}</strong><br>© 2026</div>", unsafe_allow_html=True)
-
 # ==================== Main Content ====================
 st.markdown('<p class="main-title">🫀 ระบบทำนายความเสี่ยงโรคหัวใจ</p>', unsafe_allow_html=True)
 st.markdown('<p class="sub-title">Heart Disease Risk Prediction using Decision Tree ML Model</p>', unsafe_allow_html=True)
