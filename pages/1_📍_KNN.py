@@ -91,10 +91,9 @@ st.metric("ความแม่นยำของโมเดล (R² Score)", 
 # กราฟง่ายๆ แสดงการกระจายตัวของราคา
 st.markdown("##### 📊 เปรียบเทียบราคาจริง vs ราคาที่ทำนายได้ในชุดข้อมูลทดสอบ")
 fig = px.scatter(
-    x=y_test[:500], y=y_pred_test[:500], # สุ่มมา 500 จุดเพื่อไม่ให้กราฟหนัก
-    labels={'x': 'ราคาจริง ($100k)', 'y': 'ราคาที่ทำนาย ($100k)'},
+    x=y_test[:500], y=y_pred_test[:500], 
+    labels={'x': 'ราคาจริง', 'y': 'ราคาที่ทำนาย'},
     opacity=0.6,
-    trendline="ols",
     height=300
 )
 fig.update_layout(margin=dict(l=0, r=0, t=0, b=0))
