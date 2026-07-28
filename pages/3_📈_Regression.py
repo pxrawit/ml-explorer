@@ -169,9 +169,7 @@ if st.button("🔮 ทำนายยอดขาย (Predict)", type="primary",
         x=y_test.iloc[sample_idx],
         y=y_pred[sample_idx],
         labels={'x': 'ยอดขายจริง (Actual)', 'y': 'ยอดขายที่ทำนาย (Predicted)'},
-        opacity=0.7,
-        trendline="ols",
-        trendline_color_override="red"
+        opacity=0.7
     )
     fig_scatter.update_layout(height=400)
     st.plotly_chart(fig_scatter, use_container_width=True)
